@@ -1,7 +1,9 @@
-//! A macro to convert string literals into identifiers.  This is primarily
-//! used for creating unique identifiers in macros.
+//! A macro to convert string literals into identifiers.  The primary use-case is to allow
+//! declarative macros to produce identifiers that are unique to each call.  The alternative is to
+//! accept each identifier as an argument to the macro call, which gets unweildy with many
+//! identifiers.
 //!
-//! # Example
+//! # Usage
 //!
 //! ```
 //! macro_rules! my_macro {
@@ -25,6 +27,37 @@
 //! ```
 //! fn foo_a() {}
 //! fn foo_b() {}
+//! ```
+//!
+//! # Supported Macros
+//!
+//! This crate takes advantage of [`MacroString`](https://github.com/dtolnay/macro-string/) and
+//! supports all macros supported by it.  Those macros are:
+//! - `concat!`
+//! - `stringify!`
+//! - `env!`
+//! - `include!`
+//! - `include_str!`
+//!
+//! # Ignore Variable
+//!
+//! When any unknown variables are encountered, `ident_str!` will error, if that behaviour is not
+//! desired, you can add `#<var> = None` to the declarations:
+//!
+//! ```
+//! # // Weird stringify! magic is to make this example compile
+//! ident_str::ident_str! {
+//!     #ignore = None
+//! #   => const _: &str = stringify!(
+//!     => #ignore
+//! #   );
+//! }
+//! ```
+//!
+//! This exapands into
+//!
+//! ```ignore
+//! #ignore
 //! ```
 
 use std::collections::HashMap;
