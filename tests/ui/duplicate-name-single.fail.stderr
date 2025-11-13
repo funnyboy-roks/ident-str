@@ -1,0 +1,5 @@
+error: Redefinition of #name
+ --> tests/ui/duplicate-name-single.fail.rs:3:5
+  |
+3 |     #name = "world"
+  |     ^^^^^

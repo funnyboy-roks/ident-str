@@ -12,3 +12,6 @@ macro-string = "0.1.4"
 proc-macro2 = { version = "1.0.103", features = ["span-locations"] }
 quote = "1.0.42"
 syn = "2.0.110"
+
+[dev-dependencies]
+trybuild = { version = "1.0.114", features = ["diff"] }

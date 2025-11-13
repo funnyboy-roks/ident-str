@@ -23,7 +23,6 @@ fn non_hash_ident() {
 // work in every position.
 ident_str::ident_str! {
     #derive = "derive",
-    #derive = "derive",
     #debug = "Debug",
     #peq = "PartialEq",
     #eq = "Eq",

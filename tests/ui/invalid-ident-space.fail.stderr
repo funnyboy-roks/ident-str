@@ -1,0 +1,5 @@
+error: Invalid identifier: "hello world"
+ --> tests/ui/invalid-ident-space.fail.rs:2:5
+  |
+2 |     #name = "hello world"
+  |     ^^^^^

@@ -1,0 +1,11 @@
+error: Redefinition of #name
+ --> tests/ui/duplicate-name-multi.fail.rs:3:5
+  |
+3 |     #name = "world",
+  |     ^^^^^
+
+error: Redefinition of #world
+ --> tests/ui/duplicate-name-multi.fail.rs:5:5
+  |
+5 |     #world = "world"
+  |     ^^^^^^

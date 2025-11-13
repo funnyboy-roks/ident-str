@@ -34,54 +34,43 @@ use proc_macro::TokenStream;
 use proc_macro2::{Group, Ident, TokenStream as TokenStream2, TokenTree};
 use quote::{ToTokens, TokenStreamExt};
 use syn::{
-    LitStr, Token,
+    Token,
     parse::{Parse, ParseStream},
     parse_macro_input,
     punctuated::Punctuated,
 };
 
 enum Value {
-    String(LitStr),
     MacroString(MacroString),
-    None(Ident),
+    None,
 }
 
 impl Value {
     pub fn to_string(&self) -> Option<String> {
         match self {
-            Value::String(s) => Some(s.value()),
             Value::MacroString(MacroString(n)) => Some(n.clone()),
-            Value::None(_) => None,
+            Value::None => None,
         }
     }
 }
 
 impl Parse for Value {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        if let Ok(ident) = input.step(|x| {
-            if let Some((ident, cursor)) = x.ident()
-                && ident == "None"
-            {
-                Ok((ident, cursor))
-            } else {
-                Err(x.error("Expected string or None"))
-            }
-        }) {
-            Ok(Value::None(ident))
-        } else if input.peek(LitStr) {
-            Ok(Value::String(input.parse()?))
+        if input
+            .step(|x| {
+                if let Some((ident, cursor)) = x.ident()
+                    && ident == "None"
+                {
+                    Ok((ident, cursor))
+                } else {
+                    Err(x.error("Expected string or None"))
+                }
+            })
+            .is_ok()
+        {
+            Ok(Value::None)
         } else {
             Ok(Value::MacroString(input.parse()?))
-        }
-    }
-}
-
-impl ToTokens for Value {
-    fn to_tokens(&self, tokens: &mut TokenStream2) {
-        match self {
-            Value::String(lit_str) => lit_str.to_tokens(tokens),
-            Value::MacroString(_) => {}
-            Value::None(ident) => ident.to_tokens(tokens),
         }
     }
 }
@@ -93,12 +82,12 @@ struct Decl {
     value: Value,
 }
 
-impl ToTokens for Decl {
-    fn to_tokens(&self, tokens: &mut TokenStream2) {
-        self._hash.to_tokens(tokens);
-        self.ident.to_tokens(tokens);
-        self._eq_token.to_tokens(tokens);
-        self.value.to_tokens(tokens);
+impl Decl {
+    fn name_to_tokens(&self) -> TokenStream2 {
+        let mut tokens = TokenStream2::new();
+        self._hash.to_tokens(&mut tokens);
+        self.ident.to_tokens(&mut tokens);
+        tokens
     }
 }
 
@@ -128,6 +117,8 @@ impl Parse for Decls {
         Ok(Self {
             decls: Punctuated::parse_separated_nonempty(input)?,
             _arrow: input.parse()?,
+            // TODO: emit warning when stream does not use a variable (proc_macro::Diagnostic to be
+            // stabilised)
             body: {
                 if input.peek(syn::token::Brace) {
                     let g: Group = input.parse()?;
@@ -140,18 +131,29 @@ impl Parse for Decls {
     }
 }
 
+fn append_error(errors: &mut Option<syn::Error>, new: syn::Error) {
+    if let Some(errors) = errors {
+        errors.combine(new);
+    } else {
+        *errors = Some(new);
+    }
+}
+
 fn translate_stream(
     stream: TokenStream2,
     map: &HashMap<String, Decl>,
-) -> Result<TokenStream2, TokenStream2> {
+    errors: &mut Option<syn::Error>,
+) -> TokenStream2 {
     let mut out = TokenStream2::new();
     let mut iter = stream.into_iter().peekable();
     while let Some(tok) = iter.next() {
         match tok {
             TokenTree::Ident(_) => out.append(tok),
             TokenTree::Group(group) => {
-                let mut group =
-                    Group::new(group.delimiter(), translate_stream(group.stream(), map)?);
+                let mut group = Group::new(
+                    group.delimiter(),
+                    translate_stream(group.stream(), map, errors),
+                );
                 group.set_span(group.span());
                 out.append(TokenTree::Group(group));
             }
@@ -162,34 +164,29 @@ fn translate_stream(
                     };
                     let strident = ident.to_string();
                     if let Some(decl) = map.get(&strident) {
-                        if let Some(value) = &decl.value.to_string() {
-                            let ident: Ident = match syn::parse_str::<Ident>(value) {
-                                Ok(mut i) => {
-                                    i.set_span(ident.span());
-                                    i
-                                }
-                                Err(_) => {
-                                    return Err(syn::Error::new(
-                                        ident.span(),
-                                        format!("Invalid identifier: {:?}", value),
-                                    )
-                                    .to_compile_error());
-                                }
-                            };
-                            out.append(ident);
+                        let ident = if let Some(value) = &decl.value.to_string() {
+                            Ident::new(value, ident.span()) // this won't panic, as we checked the string in main
                         } else {
                             out.append(tok);
-                            out.append(TokenTree::Ident(ident));
-                        }
-                    } else if !strident.starts_with("r#") {
-                        return Err(syn::Error::new(
-                            ident.span(),
-                            format!("Unknown ident string.  If you intended to literally use '#{0}', you can:\n- Prefix it with 'r#': #r#{0}\n- Add `#{0} = None` to the declarations", strident)
-                        )
-                        .to_compile_error());
-                    } else {
-                        out.append(tok);
+                            ident
+                        };
                         out.append(TokenTree::Ident(ident));
+                    } else {
+                        let mut tokens = TokenStream2::new();
+                        tokens.append(tok);
+                        tokens.append(ident);
+                        append_error(
+                            errors,
+                            // TODO: Replace this with Diagnostic to get better error message
+                            syn::Error::new_spanned(
+                                tokens,
+                                format!(
+                                    "Unknown ident variable.  If you intended to literally use '#{0}', add `#{0} = None` to the declarations",
+                                    strident
+                                ),
+                            ),
+                        );
+                        continue;
                     }
                 } else {
                     out.append(tok);
@@ -199,7 +196,7 @@ fn translate_stream(
         }
     }
 
-    Ok(out)
+    out
 }
 
 /// The main macro.
@@ -225,30 +222,46 @@ fn translate_stream(
 pub fn ident_str(input: TokenStream) -> TokenStream {
     let decls = parse_macro_input!(input as Decls);
     let mut map = HashMap::<String, Decl>::with_capacity(decls.decls.len());
+    let mut errors: Option<syn::Error> = None;
+    let mut can_continue = true;
     for d in decls.decls.into_iter() {
         let strident = d.ident.to_string();
         let existing = map.get(&strident);
-        if existing.is_some()
-            && (!matches!(
-                existing,
-                Some(Decl {
-                    value: Value::None(_),
-                    ..
-                })
-            ) && matches!(d.value, Value::None(_)))
-        {
-            return syn::Error::new_spanned(&d, format!("Redefinition of #{}", d.ident))
-                .to_compile_error()
-                .into();
-        } else {
-            map.insert(strident, d);
+        if existing.is_some() {
+            append_error(
+                &mut errors,
+                syn::Error::new_spanned(
+                    d.name_to_tokens(),
+                    format!("Redefinition of #{}", d.ident),
+                ),
+            );
         }
-    }
-    let tokens = translate_stream(decls.body, &map);
 
-    match tokens {
-        Ok(t) => t,
-        Err(t) => t,
+        if let Some(valstring) = d.value.to_string()
+            && syn::parse_str::<Ident>(&valstring).is_err()
+        {
+            append_error(
+                &mut errors,
+                syn::Error::new_spanned(
+                    d.name_to_tokens(),
+                    format!("Invalid identifier: {:?}", valstring),
+                ),
+            );
+            can_continue = false;
+        }
+        map.insert(strident, d);
     }
-    .into()
+
+    let mut tokens = if can_continue {
+        translate_stream(decls.body, &map, &mut errors)
+    } else {
+        debug_assert!(errors.is_some());
+        TokenStream2::new()
+    };
+
+    if let Some(errors) = errors {
+        errors.to_compile_error().to_tokens(&mut tokens);
+    }
+
+    tokens.into()
 }

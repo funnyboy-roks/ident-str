@@ -1,0 +1,5 @@
+error: Unknown ident variable.  If you intended to literally use '#foo', add `#foo = None` to the declarations
+ --> tests/ui/unknown-variable.fail.rs:3:35
+  |
+3 |     => const _: &str = stringify!(#foo); // just ignore the #foo
+  |                                   ^^^^
