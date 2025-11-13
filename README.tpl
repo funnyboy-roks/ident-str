@@ -2,8 +2,8 @@
 
 # {{crate}}
 
-<!-- [![Crates.io](https://img.shields.io/crates/v/leucite.svg)](https://crates.io/crates/leucite) -->
-<!-- [![Documentation](https://docs.rs/leucite/badge.svg)](https://docs.rs/leucite/) -->
-<!-- [![Dependency status](https://deps.rs/repo/github/basalt-rs/leucite/status.svg)](https://deps.rs/repo/github/basalt-rs/leucite) -->
+[![Crates.io](https://img.shields.io/crates/v/ident-str.svg)](https://crates.io/crates/ident-str)
+[![Documentation](https://docs.rs/ident-str/badge.svg)](https://docs.rs/ident-str/)
+[![Dependency status](https://deps.rs/repo/github/funnyboy-roks/ident-str/status.svg)](https://deps.rs/repo/github/funnyboy-roks/ident-str)
 
 {{readme}}
