@@ -1,7 +1,12 @@
 [package]
 name = "ident-str"
+description = "A macro to convert string literals into identifiers"
+license = "Apache-2.0"
 version = "0.1.0"
 edition = "2024"
+repository = "https://github.com/funnyboy-roks/ident-str"
+categories = ["rust-patterns", "development-tools"]
+keywords = ["proc-macro"]
 
 [lib]
 path = "src/lib.rs"
