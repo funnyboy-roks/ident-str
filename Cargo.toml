@@ -7,6 +7,7 @@ edition = "2024"
 repository = "https://github.com/funnyboy-roks/ident-str"
 categories = ["rust-patterns", "development-tools"]
 keywords = ["proc-macro"]
+rust-version = "1.85"
 
 [lib]
 path = "src/lib.rs"
