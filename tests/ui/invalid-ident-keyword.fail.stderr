@@ -1,5 +1,5 @@
 error: Invalid identifier: "struct"
- --> tests/ui/invalid-ident-keyword.fail.rs:2:5
+ --> tests/ui/invalid-ident-keyword.fail.rs:2:13
   |
 2 |     #name = "struct"
-  |     ^^^^^
+  |             ^^^^^^^^

@@ -60,7 +60,7 @@
 //! #ignore
 //! ```
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display};
 
 use macro_string::MacroString;
 use proc_macro::TokenStream;
@@ -73,21 +73,29 @@ use syn::{
 };
 
 enum Value {
-    MacroString(MacroString),
-    None,
+    MacroString(MacroString, String),
+    None(Ident),
 }
 
 impl Value {
-    pub fn to_string(&self) -> Option<String> {
+    pub fn to_string(&self) -> Option<&str> {
         match self {
-            Value::MacroString(MacroString(n)) => Some(n.clone()),
-            Value::None => None,
+            Value::MacroString(_, s) => Some(s),
+            Value::None(_) => None,
+        }
+    }
+
+    pub fn error(&self, message: impl Display) -> syn::Error {
+        match self {
+            Value::MacroString(macro_string, _) => macro_string.error(message),
+            Value::None(ident) => syn::Error::new(ident.span(), message),
         }
     }
 }
 
 impl Parse for Value {
     fn parse(input: ParseStream) -> syn::Result<Self> {
+        let fork = input.fork();
         if input
             .step(|x| {
                 if let Some((ident, cursor)) = x.ident() {
@@ -102,9 +110,11 @@ impl Parse for Value {
             })
             .is_ok()
         {
-            Ok(Value::None)
+            Ok(Value::None(fork.parse().expect("checked above")))
         } else {
-            Ok(Value::MacroString(input.parse()?))
+            let ms: MacroString = input.parse()?;
+            let eval = ms.eval()?;
+            Ok(Value::MacroString(ms, eval))
         }
     }
 }
@@ -291,10 +301,8 @@ pub fn ident_str(input: TokenStream) -> TokenStream {
             if syn::parse_str::<Ident>(&valstring).is_err() {
                 append_error(
                     &mut errors,
-                    syn::Error::new_spanned(
-                        d.name_to_tokens(),
-                        format!("Invalid identifier: {:?}", valstring),
-                    ),
+                    d.value
+                        .error(format!("Invalid identifier: {:?}", valstring)),
                 );
                 can_continue = false;
             }
