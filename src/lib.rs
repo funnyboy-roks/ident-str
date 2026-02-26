@@ -298,7 +298,7 @@ pub fn ident_str(input: TokenStream) -> TokenStream {
         }
 
         if let Some(valstring) = d.value.to_string() {
-            if syn::parse_str::<Ident>(&valstring).is_err() {
+            if syn::parse_str::<Ident>(valstring).is_err() {
                 append_error(
                     &mut errors,
                     d.value
