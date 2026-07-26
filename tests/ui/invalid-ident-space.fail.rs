@@ -1,4 +1,4 @@
-ident_str::ident_str! {
+ident_str::ident_str_def! {
     #name = "hello world"
     =>
 }

@@ -6,20 +6,21 @@
 //! # Usage
 //!
 //! ```
+//! # use ident_str::ident_str;
+//! #[ident_str]
 //! macro_rules! my_macro {
-//!     ($name: ident) => {
-//!         ident_str::ident_str! {
-//!             #name_a = concat!(stringify!($name), "_a"),
-//!             #name_b = concat!(stringify!($name), "_b"),
-//!             => {
-//!                 fn #name_a() {}
-//!                 fn #name_b() {}
-//!             }
-//!         }
+//!     ($name: ident) =>
+//!         let #name_a = concat!(stringify!($name), "_a");
+//!         let #name_b = concat!(stringify!($name), "_b");
+//!     {
+//!         fn #name_a() {}
+//!         fn #name_b() {}
 //!     };
 //! }
 //!
 //! my_macro!(foo);
+//! # foo_a(); // ensure these are created
+//! # foo_b();
 //! ```
 //!
 //! expands to
@@ -44,9 +45,30 @@
 //! When any unknown variables are encountered, `ident_str!` will error, if that behaviour is not
 //! desired, you can add `#<var> = None` to the declarations:
 //!
+//! Using [`ident_str`]
+//!
 //! ```
+//! # use ident_str::ident_str;
 //! # // Weird stringify! magic is to make this example compile
-//! ident_str::ident_str! {
+//! #[ident_str]
+//! macro_rules! my_macro {
+//!     () =>
+//!         let #ignore = None;
+//!     {
+//! #   const _: &str = stringify!(
+//!         #ignore
+//! #   );
+//!     }
+//! }
+//! my_macro!();
+//! ```
+//!
+//! Using [`ident_str_def`]
+//!
+//! ```
+//! # use ident_str::ident_str_def;
+//! # // Weird stringify! magic is to make this example compile
+//! ident_str_def! {
 //!     #ignore = None
 //! #   => const _: &str = stringify!(
 //!     => #ignore
@@ -54,7 +76,7 @@
 //! }
 //! ```
 //!
-//! This expands into
+//! Each example expands into
 //!
 //! ```ignore
 //! #ignore
@@ -63,14 +85,15 @@
 use std::{collections::HashMap, fmt::Display};
 
 use macro_string::MacroString;
-use proc_macro::TokenStream;
-use proc_macro2::{Group, Ident, TokenStream as TokenStream2, TokenTree};
+use proc_macro2::{Group, Ident, TokenStream, TokenTree};
 use quote::{ToTokens, TokenStreamExt};
 use syn::{
     Token,
     parse::{Parse, ParseStream},
     parse_macro_input,
 };
+
+mod attr_macro;
 
 enum Value {
     MacroString(MacroString, String),
@@ -127,8 +150,8 @@ struct Decl {
 }
 
 impl Decl {
-    fn name_to_tokens(&self) -> TokenStream2 {
-        let mut tokens = TokenStream2::new();
+    fn name_to_tokens(&self) -> TokenStream {
+        let mut tokens = TokenStream::new();
         self._hash.to_tokens(&mut tokens);
         self.ident.to_tokens(&mut tokens);
         tokens
@@ -152,7 +175,7 @@ impl Parse for Decl {
 
 struct Decls {
     decls: Vec<Decl>,
-    body: TokenStream2,
+    body: TokenStream,
 }
 
 impl Parse for Decls {
@@ -201,11 +224,11 @@ fn append_error(errors: &mut Option<syn::Error>, new: syn::Error) {
 }
 
 fn translate_stream(
-    stream: TokenStream2,
+    stream: TokenStream,
     map: &HashMap<String, Decl>,
     errors: &mut Option<syn::Error>,
-) -> TokenStream2 {
-    let mut out = TokenStream2::new();
+) -> TokenStream {
+    let mut out = TokenStream::new();
     let mut iter = stream.into_iter().peekable();
     while let Some(tok) = iter.next() {
         match tok {
@@ -233,7 +256,7 @@ fn translate_stream(
                         };
                         out.append(TokenTree::Ident(ident));
                     } else {
-                        let mut tokens = TokenStream2::new();
+                        let mut tokens = TokenStream::new();
                         tokens.append(tok);
                         tokens.append(ident);
                         append_error(
@@ -260,14 +283,14 @@ fn translate_stream(
     out
 }
 
-/// The main macro.
+/// Slightly faster, but less user-friendly version of [`ident_str`]
 ///
-/// Accepts any number of `name = <string literal>` pairs (or using macros like `concat!` or
-/// `stringify!`) separated by commas (with an optional trailing comma), followed by `=>` and then
-/// the body that will be expanded (optionally surrounded by `{}`).
+/// Accepts any number of `#name = <string literal>` pairs (or using macros like `concat!` or
+/// `stringify!`) separated by commas, followed by `=>` and then the body that will be expanded
+/// (optionally surrounded by `{}`).
 ///
 /// ```
-/// ident_str::ident_str! {
+/// ident_str::ident_str_def! {
 ///     #name = "hello_world" =>
 ///     fn #name() -> &'static str {
 ///         stringify!(#name)
@@ -278,8 +301,9 @@ fn translate_stream(
 /// #     assert_eq!(hello_world(), "hello_world");
 /// # }
 /// ```
+// NOTE: This macro is used internally by `ident_str`, see `attr_macro` module for more inforamtion.
 #[proc_macro]
-pub fn ident_str(input: TokenStream) -> TokenStream {
+pub fn ident_str_def(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let decls = parse_macro_input!(input as Decls);
     let mut map = HashMap::<String, Decl>::with_capacity(decls.decls.len());
     let mut errors: Option<syn::Error> = None;
@@ -314,7 +338,7 @@ pub fn ident_str(input: TokenStream) -> TokenStream {
         translate_stream(decls.body, &map, &mut errors)
     } else {
         debug_assert!(errors.is_some());
-        TokenStream2::new()
+        TokenStream::new()
     };
 
     if let Some(errors) = errors {
@@ -322,4 +346,43 @@ pub fn ident_str(input: TokenStream) -> TokenStream {
     }
 
     tokens.into()
+}
+
+/// Attribute macro for using ident-str
+///
+/// When this attribute macro is applied to a `macro_rules!` definition, it will look for name
+/// definitions after the pattern for a macro branch (See example).
+///
+/// This is a more user-friendly version of [`ident_str_def`], though compile times may be slightly
+/// slower when using this as it expands to use the [`ident_str_def`] macro.
+///
+/// ## Example
+///
+/// ```
+/// # use ident_str::ident_str;
+/// #[ident_str]
+/// macro_rules! my_macro {
+///     ($name: ident) =>
+///         let #fn_a = concat!(stringify!($name), "_a");
+///         let #fn_b = concat!(stringify!($name), "_b");
+///     {
+///         fn #fn_a() {
+///             println!("Hello");
+///         }
+///         fn #fn_b() {
+///             println!("World");
+///         }
+///     }
+/// }
+///
+/// my_macro!(foo);
+/// foo_a();
+/// foo_b();
+/// ```
+#[proc_macro_attribute]
+pub fn ident_str(
+    _attributes: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    parse_macro_input!(input with attr_macro::ident_str).into()
 }

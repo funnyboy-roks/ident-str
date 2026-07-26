@@ -2,7 +2,7 @@ struct MyStruct {
     name: &'static str,
 }
 
-ident_str::ident_str! {
+ident_str::ident_str_def! {
     #name = "my_function" =>
     fn #name(s: MyStruct) -> &'static str {
         s.name
@@ -21,7 +21,7 @@ fn non_hash_ident() {
 
 // This is obviously an exaggerated example, but its goal is to ensure that identifier translations
 // work in every position.
-ident_str::ident_str! {
+ident_str::ident_str_def! {
     #derive = "derive",
     #debug = "Debug",
     #peq = "PartialEq",

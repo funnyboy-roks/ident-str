@@ -11,7 +11,7 @@ where
 
 macro_rules! test_add {
     ($left: literal + $right: literal == $result: literal) => {
-        ident_str::ident_str! {
+        ident_str::ident_str_def! {
             #name = concat!("test_add_", $left, "_", $right, "_eq_", $result),
             => {
                 #[test]
